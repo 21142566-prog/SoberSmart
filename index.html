@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sober Smart Web</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="icon-box">🛡️</div>
+
+      <div class="title-group">
+        <h1>0.00%</h1>
+        <p>BLOOD ALCOHOL CONTENT</p>
+      </div>
+
+      <div class="status-box">
+        <h2 id="status-title">SAFE</h2>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <p>ADC</p>
+          <p id="adc-value">0</p>
+        </div>
+        <div class="stat-card">
+          <p>Status</p>
+          <p id="status-value" style="color: #34d399;">SAFE</p>
+        </div>
+      </div>
+
+      <div class="button-wrapper">
+        <button id="connect-button">Connect Device</button>
+      </div>
+
+      <div class="info-text">STM32 USB CDC Breathalyzer Interface</div>
+      <div id="toast" class="toast hidden">Chưa có thông báo.</div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
