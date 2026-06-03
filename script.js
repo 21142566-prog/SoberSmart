@@ -19,7 +19,6 @@ function getStatusColor(status) {
 }
 
 function mvToBAC(mv) {
-  // 30mV = 0.00%BAC, 150mV = 0.40%BAC
   const pct = ((mv - 30) / (150 - 30)) * 0.40;
   return Math.max(0, pct).toFixed(2);
 }
@@ -28,11 +27,19 @@ function processLine(line) {
   line = line.trim();
   if (!line) return;
 
+  // Tìm JSON hợp lệ trong line (bắt đầu { kết thúc })
+  const start = line.indexOf('{');
+  const end = line.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return;
+
+  const jsonStr = line.substring(start, end + 1);
+
   try {
-    const data = JSON.parse(line);
+    const data = JSON.parse(jsonStr);
 
     // Cập nhật ADC
-    adcValueEl.textContent = data.adc ?? '--';
+    if (data.adc !== undefined)
+      adcValueEl.textContent = data.adc;
 
     // Cập nhật status
     const status = data.status ?? 'SAFE';
@@ -46,10 +53,10 @@ function processLine(line) {
     bacDisplay.textContent = bac + '%';
 
     // Cập nhật toast
-    setToast(`ADC: ${data.adc} | ${data.mv} mV | ${status}`);
+    setToast(`ADC: ${data.adc} | ${(data.mv ?? 0).toFixed(1)} mV | ${status}`);
 
   } catch (e) {
-    console.warn('Parse lỗi:', line);
+    console.warn('Parse lỗi:', jsonStr);
   }
 }
 
@@ -70,6 +77,7 @@ connectButton.addEventListener('click', async () => {
     port.readable.pipeTo(decoder.writable);
     const reader = decoder.readable.getReader();
 
+    connectButton.textContent = 'Đã kết nối';
     setToast('Đã kết nối! Đang nhận dữ liệu...');
 
     while (true) {
@@ -77,18 +85,27 @@ connectButton.addEventListener('click', async () => {
       if (done) break;
       if (!value) continue;
 
+      // Ghép buffer
       lineBuffer += value;
+
+      // Tách theo \n
       const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop();
+      lineBuffer = lines.pop(); // giữ phần chưa đủ dòng
 
       for (const line of lines) {
         processLine(line);
+      }
+
+      // Xử lý thêm trường hợp JSON đủ trong buffer chưa có \n
+      if (lineBuffer.includes('{') && lineBuffer.includes('}')) {
+        processLine(lineBuffer);
+        lineBuffer = '';
       }
     }
 
   } catch (err) {
     console.error(err);
-    setToast('Mất kết nối hoặc không thể kết nối. Thử lại nhé!');
+    setToast('Mất kết nối. Thử lại nhé!');
   } finally {
     connectButton.disabled = false;
     connectButton.textContent = 'Connect Device';
