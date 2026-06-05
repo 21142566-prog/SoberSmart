@@ -27,36 +27,47 @@ function processLine(line) {
   line = line.trim();
   if (!line) return;
 
-  // Tìm JSON hợp lệ trong line (bắt đầu { kết thúc })
   const start = line.indexOf('{');
   const end = line.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) return;
 
-  const jsonStr = line.substring(start, end + 1);
-
   try {
-    const data = JSON.parse(jsonStr);
+    const data = JSON.parse(line.substring(start, end + 1));
+
+    // Reset web khi IDLE
+    if (data.status === 'IDLE') {
+      bacDisplay.textContent = '0.00%';
+      adcValueEl.textContent = '--';
+      statusTitle.textContent = 'READY';
+      statusTitle.style.color = '#34d399';
+      statusValueEl.textContent = 'READY';
+      statusValueEl.style.color = '#34d399';
+      setToast('Sẵn sàng đo. Nhấn nút để bắt đầu...');
+      return;
+    }
 
     // Cập nhật ADC
     if (data.adc !== undefined)
       adcValueEl.textContent = data.adc;
 
     // Cập nhật status
-    const status = data.status ?? 'SAFE';
-    statusValueEl.textContent = status;
-    statusValueEl.style.color = getStatusColor(status);
-    statusTitle.textContent = status;
-    statusTitle.style.color = getStatusColor(status);
+    const info = getStatusInfo(data.status ?? 'SAFE');
+    statusValueEl.textContent = info.label;
+    statusValueEl.style.color = info.color;
+    statusTitle.textContent = info.label;
+    statusTitle.style.color = info.color;
 
     // Cập nhật BAC %
-    const bac = mvToBAC(data.mv ?? 0);
-    bacDisplay.textContent = bac + '%';
+    const pct = (data.pct ?? 0).toFixed(3);
+    bacDisplay.textContent = pct + '%';
 
     // Cập nhật toast
-    setToast(`ADC: ${data.adc} | ${(data.mv ?? 0).toFixed(1)} mV | ${status}`);
+    setToast(
+      `ADC: ${data.adc} | ${(data.mv ?? 0).toFixed(1)} mV | ${info.label}`
+    );
 
   } catch (e) {
-    console.warn('Parse lỗi:', jsonStr);
+    console.warn('Parse lỗi:', line);
   }
 }
 
