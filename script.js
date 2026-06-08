@@ -48,7 +48,7 @@ function processLine(line) {
 
     // Cập nhật ADC
     if (data.adc !== undefined)
-      adcValueEl.textContent = data.adc;
+      adcValueEl.textContent = (data.mgL ?? 0).toFixed(4);
 
     // Cập nhật status
     const info = getStatusInfo(data.status ?? 'SAFE');
