@@ -36,19 +36,21 @@ function processLine(line) {
 
     // Reset web khi IDLE
     if (data.status === 'IDLE' || data.status === 'WAIT_RESET') {
-    bacDisplay.textContent = '0.00%';
-    adcValueEl.textContent = '--';
-    statusTitle.textContent = data.status === 'WAIT_RESET' ? 'NHẤN NÚT ĐỂ TIẾP TỤC' : 'READY';
-    statusTitle.style.color = '#94a3b8';
-    statusValueEl.textContent = statusTitle.textContent;
-    statusValueEl.style.color = '#94a3b8';
-    setToast(data.status === 'WAIT_RESET' ? 'Nhấn nút để đo người tiếp theo...' : 'Sẵn sàng đo. Nhấn nút để bắt đầu...');
-    return;
-}
+      bacDisplay.textContent = '0.00%';
+      adcValueEl.textContent = '--';
+      statusTitle.textContent = data.status === 'WAIT_RESET' ? 'NHẤN NÚT ĐỂ TIẾP TỤC' : 'READY';
+      statusTitle.style.color = '#94a3b8';
+      statusValueEl.textContent = statusTitle.textContent;
+      statusValueEl.style.color = '#94a3b8';
+      setToast(data.status === 'WAIT_RESET' ? 'Nhấn nút để đo người tiếp theo...' : 'Sẵn sàng đo. Nhấn nút để bắt đầu...');
+      return;
+    }
 
-    // Cập nhật ADC
-    if (data.adc !== undefined)
-      adcValueEl.textContent = (data.mgL ?? 0).toFixed(4);
+    // Cập nhật giá trị mg/L
+    const mgL = data.mgL ?? data.adc ?? 0;
+    if (data.adc !== undefined || data.mgL !== undefined) {
+      adcValueEl.textContent = Number(mgL).toFixed(4);
+    }
 
     // Cập nhật status
     const info = getStatusInfo(data.status ?? 'SAFE');
@@ -63,7 +65,7 @@ function processLine(line) {
 
     // Cập nhật toast
     setToast(
-      `ADC: ${data.adc} | ${(data.mv ?? 0).toFixed(1)} mV | ${info.label}`
+      `mg/L: ${Number(mgL).toFixed(4)} | ${(data.mv ?? 0).toFixed(1)} mV | ${info.label}`
     );
 
   } catch (e) {
