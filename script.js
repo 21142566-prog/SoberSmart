@@ -12,10 +12,20 @@ function setToast(message) {
   toast.classList.remove('hidden');
 }
 
-function getStatusColor(status) {
-  if (status === 'SAFE')    return '#34d399';
-  if (status === 'WARNING') return '#f59e0b';
-  return '#ef4444';
+function getStatusInfo(status) {
+  if (status === 'IDLE') {
+    return { label: 'IDLE', color: '#94a3b8' };
+  }
+  if (status === 'WAIT_RESET') {
+    return { label: 'NHẤN NÚT ĐỂ TIẾP TỤC', color: '#fbbf24' };
+  }
+  if (status === 'LEVEL1') {
+    return { label: 'LEVEL1', color: '#f59e0b' };
+  }
+  if (status === 'LEVEL2') {
+    return { label: 'LEVEL2', color: '#ef4444' };
+  }
+  return { label: 'SAFE', color: '#34d399' };
 }
 
 function mvToBAC(mv) {
@@ -34,15 +44,20 @@ function processLine(line) {
   try {
     const data = JSON.parse(line.substring(start, end + 1));
 
-    // Reset web khi IDLE
+    // Reset web khi ở trạng thái chờ / reset
     if (data.status === 'IDLE' || data.status === 'WAIT_RESET') {
       bacDisplay.textContent = '0.00%';
       adcValueEl.textContent = '--';
-      statusTitle.textContent = data.status === 'WAIT_RESET' ? 'NHẤN NÚT ĐỂ TIẾP TỤC' : 'READY';
-      statusTitle.style.color = '#94a3b8';
-      statusValueEl.textContent = statusTitle.textContent;
-      statusValueEl.style.color = '#94a3b8';
-      setToast(data.status === 'WAIT_RESET' ? 'Nhấn nút để đo người tiếp theo...' : 'Sẵn sàng đo. Nhấn nút để bắt đầu...');
+
+      const idleInfo = getStatusInfo(data.status);
+      statusTitle.textContent = idleInfo.label;
+      statusTitle.style.color = idleInfo.color;
+      statusValueEl.textContent = idleInfo.label;
+      statusValueEl.style.color = idleInfo.color;
+
+      setToast(data.status === 'WAIT_RESET'
+        ? 'Đã kết thúc đo. Nhấn nút để đo tiếp theo...'
+        : 'Sẵn sàng đo. Nhấn nút để bắt đầu đo 5 giây...');
       return;
     }
 
