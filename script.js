@@ -35,16 +35,16 @@ function processLine(line) {
     const data = JSON.parse(line.substring(start, end + 1));
 
     // Reset web khi IDLE
-    if (data.status === 'IDLE') {
-      bacDisplay.textContent = '0.00%';
-      adcValueEl.textContent = '--';
-      statusTitle.textContent = 'READY';
-      statusTitle.style.color = '#34d399';
-      statusValueEl.textContent = 'READY';
-      statusValueEl.style.color = '#34d399';
-      setToast('Sẵn sàng đo. Nhấn nút để bắt đầu...');
-      return;
-    }
+    if (data.status === 'IDLE' || data.status === 'WAIT_RESET') {
+    bacDisplay.textContent = '0.00%';
+    adcValueEl.textContent = '--';
+    statusTitle.textContent = data.status === 'WAIT_RESET' ? 'NHẤN NÚT ĐỂ TIẾP TỤC' : 'READY';
+    statusTitle.style.color = '#94a3b8';
+    statusValueEl.textContent = statusTitle.textContent;
+    statusValueEl.style.color = '#94a3b8';
+    setToast(data.status === 'WAIT_RESET' ? 'Nhấn nút để đo người tiếp theo...' : 'Sẵn sàng đo. Nhấn nút để bắt đầu...');
+    return;
+}
 
     // Cập nhật ADC
     if (data.adc !== undefined)
