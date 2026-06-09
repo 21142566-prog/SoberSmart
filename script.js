@@ -138,11 +138,11 @@ connectButton.addEventListener('click', async () => {
     // KIỂM TRA VÀ CHIẾM QUYỀN INTERFACE CHUẨN ĐỐI VỚI DÒNG G0B1
     // Thử Interface 1 trước (Interface truyền dữ liệu thô của Custom HID)
     try {
-      await usbDevice.claimInterface(1);
-      console.log("Đã chiếm quyền thành công Interface 1");
+      await usbDevice.claimInterface(0); 
+      console.log("Đã chiếm quyền thành công Interface 0");
     } catch (ifaceErr) {
-      console.log("Interface 1 bận hoặc không tồn tại, thử chiếm quyền Interface 0...");
-      await usbDevice.claimInterface(0);
+      console.error("Không thể chiếm quyền Interface 0:", ifaceErr);
+      throw ifaceErr;
     }
 
     connectButton.textContent = 'Đã kết nối';
