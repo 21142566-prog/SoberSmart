@@ -134,18 +134,17 @@ connectButton.addEventListener('click', async () => {
 
     await usbDevice.open();
 
-    // Nếu chip chưa chọn cấu hình, ta ép chọn cấu hình số 1
-    if (usbDevice.configuration === null) {
-      await usbDevice.selectConfiguration(1);
+    await usbDevice.selectConfiguration(1);
+    // Chiếm quyền sử dụng cổng dữ liệu (Interface số 0 của lớp Custom HID)
+    try {
+      await usbDevice.claimInterface(0);
+        } catch (ifaceErr) {
+    // Nếu Interface 0 bị báo bận, tự động chuyển sang Interface 1
+    console.log("Interface 0 bận, thử chiếm quyền Interface 1...");
+    await usbDevice.claimInterface(1);
     }
 
-    // TỰ ĐỘNG TÌM INTERFACE KHẢ DỤNG:
-    // Thử chiếm quyền Interface đầu tiên mà chip mở ra
-    const interfaceNumber = usbDevice.configuration.interfaces[0].interfaceNumber;
-    await usbDevice.claimInterface(interfaceNumber); 
-
-    setToast(`Kết nối thành công tới Interface ${interfaceNumber}!`);
-
+    setToast('Đã thông luồng dữ liệu Custom HID thành công!');
     connectButton.textContent = 'Đã kết nối';
     setToast('Kết nối thành công tới STM32G0B1 Custom HID!');
 
