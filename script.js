@@ -8,8 +8,7 @@ const liveTimeEl = document.getElementById('live-time');
 const liveDateEl = document.getElementById('live-date');
 
 let lineBuffer = '';
-let usbDevice = null; // Biến lưu trữ thiết bị nếu kết nối qua WebUSB (Điện thoại)
-let serialPort = null; // Biến lưu trữ cổng nếu kết nối qua WebSerial (Laptop)
+let usbDevice = null; // Biến lưu trữ thiết bị kết nối qua WebUSB
 
 // --- 1. CẬP NHẬT ĐỒNG HỒ REALTIME ---
 function updateClock() {
@@ -34,18 +33,19 @@ function setToast(message) {
   toast.classList.remove('hidden');
 }
 
+// Định dạng màu sắc giao diện tương ứng với trạng thái mạch gửi lên
 function getStatusInfo(status) {
   switch (status) {
-    case 'IDLE': return { label: 'SẴN SÀNG', color: '#38bdf8' };
-    case 'MEASURING': return { label: 'ĐANG THỔI KHÍ...', color: '#a855f7' };
-    case 'WAIT_RESET': return { label: 'ĐO XONG - CHỜ RESET', color: '#fbbf24' };
-    case 'LEVEL1': return { label: 'VI PHẠM MỨC 1', color: '#f97316' };
-    case 'LEVEL2': return { label: 'VI PHẠM NẶNG', color: '#ef4444' };
-    default: return { label: 'AN TOÀN (SAFE)', color: '#34d399' };
+    case 'IDLE': return { label: 'SẴN SÀNG ĐO', color: '#38bdf8' };     // Xanh dương bầu trời
+    case 'MEASURING': return { label: 'ĐANG THỔI KHÍ...', color: '#a855f7' }; // Tím nhấp nháy
+    case 'WAIT_RESET': return { label: 'CHỜ RESET MẠCH', color: '#fbbf24' }; // Vàng cảnh báo
+    case 'LEVEL1': return { label: 'VI PHẠM MỨC 1', color: '#f97316' };  // Cam phạt nhẹ
+    case 'LEVEL2': return { label: 'VI PHẠM NẶNG', color: '#ef4444' };   // Đỏ hú còi
+    default: return { label: 'AN TOÀN (SAFE)', color: '#34d399' };     // Xanh lá
   }
 }
 
-// --- 2. XỬ LÝ CHUỖI JSON ĐỒ VỀ ---
+// --- 2. XỬ LÝ CHUỖI JSON NHẬN ĐƯỢC ---
 function processLine(line) {
   line = line.trim();
   if (!line) return;
@@ -57,6 +57,7 @@ function processLine(line) {
   try {
     const data = JSON.parse(line.substring(start, end + 1));
 
+    // Trạng thái chờ rảnh (IDLE) -> Đưa màn hình về 0
     if (data.status === 'IDLE') {
       bacDisplay.textContent = '0.00%';
       adcValueEl.textContent = '0.0000';
@@ -69,33 +70,37 @@ function processLine(line) {
       return;
     }
 
+    // Trạng thái chốt kết quả chờ nhấn nút cứng (WAIT_RESET)
     if (data.status === 'WAIT_RESET') {
       const waitInfo = getStatusInfo('WAIT_RESET');
       statusTitle.textContent = waitInfo.label;
       statusTitle.style.color = waitInfo.color;
-      setToast('Đã chốt kết quả! Hãy nhấn nút trên mạch để đo lượt mới.');
-      return;
+      setToast('Đã chốt đỉnh cồn! Hãy nhấn nút cứng trên thiết bị để đo lượt mới.');
+      return; 
     }
 
+    // Cập nhật giá trị khí thở mg/L tức thời
     const mgL = data.mgL ?? 0;
     adcValueEl.textContent = Number(mgL).toFixed(4);
 
+    // Cập nhật nhãn trạng thái (SAFE / LEVEL1 / LEVEL2 / MEASURING)
     const info = getStatusInfo(data.status ?? 'SAFE');
     statusTitle.textContent = info.label;
     statusTitle.style.color = info.color;
     statusValueEl.textContent = data.status;
     statusValueEl.style.color = info.color;
 
+    // Cập nhật phần trăm nồng độ cồn máu (% BAC)
     const pct = (data.pct ?? 0).toFixed(3);
     bacDisplay.textContent = pct + '%';
 
     setToast(`Khí thở: ${Number(mgL).toFixed(4)} mg/L | Điện áp: ${(data.mv ?? 0).toFixed(1)} mV`);
   } catch (e) {
-    console.warn('Lỗi parse JSON:', line);
+    console.warn('Lỗi phân tích cú pháp JSON:', line);
   }
 }
 
-// Hàm gom và tách dòng dữ liệu thu được từ cả 2 nguồn (USB / Serial)
+// Bộ đệm xử lý tách dòng dữ liệu thô liên tục
 function handleRawData(textChunk) {
   lineBuffer += textChunk;
   const lines = lineBuffer.split('\n');
@@ -111,87 +116,49 @@ function handleRawData(textChunk) {
   }
 }
 
-// --- 3. LOGIC KẾT NỐI ĐA NỀN TẢNG ---
+// --- 3. KẾT NỐI QUA WEBUSB (HỖ TRỢ CẢ PC VÀ ĐIỆN THOẠI) ---
 connectButton.addEventListener('click', async () => {
-  // BƯỚC THỬ 1: Nếu chạy trên Laptop (Có hỗ trợ Web Serial API)
-  if ('serial' in navigator) {
-    try {
-      connectButton.disabled = true;
-      connectButton.textContent = 'Đang kết nối (PC)...';
-
-      serialPort = await navigator.serial.requestPort();
-      await serialPort.open({ baudRate: 115200 });
-
-      const decoder = new TextDecoderStream();
-      serialPort.readable.pipeTo(decoder.writable);
-      const reader = decoder.readable.getReader();
-
-      connectButton.textContent = 'Đã kết nối';
-      setToast('Kết nối thành công qua Web Serial (Laptop)!');
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value) handleRawData(value);
-      }
-    } catch (err) {
-      console.error(err);
-      setToast('Lỗi kết nối Serial trên Laptop. Thử lại nhé!');
-      connectButton.disabled = false;
-      connectButton.textContent = 'Connect Device';
-    }
+  if (!('usb' in navigator)) {
+    setToast('Trình duyệt không hỗ trợ WebUSB API. Hãy dùng Chrome trên PC/Android!');
     return;
   }
 
-  // BƯỚC THỬ 2: Nếu chạy trên Điện thoại (Không có Serial, chuyển sang WebUSB API)
-  if ('usb' in navigator) {
-    try {
-      connectButton.disabled = true;
-      connectButton.textContent = 'Đang kết nối (Phone)...';
+  try {
+    connectButton.disabled = true;
+    connectButton.textContent = 'Đang kết nối...';
 
-      // Lọc theo đúng mã nhận diện mặc định của STM32 Virtual COM Port (VID: 0x0483, PID: 0x5740)
-      usbDevice = await navigator.usb.requestDevice({
-        filters: [{ vendorId: 0x0483, productId: 0x5740 }]
-      });
+    // Quét thiết bị (Nếu muốn mở rộng danh sách quét, có thể dùng { filters: [] })
+    usbDevice = await navigator.usb.requestDevice({
+      filters: [{ vendorId: 0x0483, productId: 0x5750 }] // Mã VID/PID chuẩn Custom HID của STM32
+    });
 
-      await usbDevice.open();
-      await usbDevice.selectConfiguration(1);
-      
-      // Lớp CDC của STM32 có 2 Interface: 0 (Control) và 1 (Data). Ta cần chiếm quyền Interface 1 để đọc dữ liệu
-      await usbDevice.claimInterface(1); 
-      
-      // Gửi lệnh cấu hình để kích hoạt đường truyền (DTR - Data Terminal Ready) của CDC Driver
-      await usbDevice.controlTransferOut({
-        requestType: 'class',
-        recipient: 'interface',
-        request: 0x22, // SET_CONTROL_LINE_STATE
-        value: 0x01,  // DTR = 1
-        index: 0x01   // Interface số 1
-      });
+    await usbDevice.open();
+    await usbDevice.selectConfiguration(1);
+    
+    // Chiếm quyền Interface số 0 (Kênh endpoint thô của Custom HID)
+    await usbDevice.claimInterface(0); 
 
-      connectButton.textContent = 'Đã kết nối';
-      setToast('Kết nối thành công qua WebUSB (Điện thoại)!');
+    connectButton.textContent = 'Đã kết nối';
+    setToast('Kết nối thành công tới STM32G0B1 Custom HID!');
 
-      const decoder = new TextDecoder();
-      
-      // Vòng lặp liên tục đọc dữ liệu thô từ Endpoint số 1 của STM32 (Mặc định cho kênh IN của CDC)
-      while (true) {
-        // Đọc tối đa gói dữ liệu 64 byte từ Endpoint 1, timeout mặc định
-        let result = await usbDevice.transferIn(1, 64); 
-        if (result.status === 'ok' && result.data.byteLength > 0) {
-          let text = decoder.decode(result.data);
-          handleRawData(text);
-        }
+    const decoder = new TextDecoder();
+    
+    // Vòng lặp vô hạn đọc các gói tin 64-byte từ Endpoint 1 (0x81)
+    while (true) {
+      let result = await usbDevice.transferIn(1, 64); 
+      if (result.status === 'ok' && result.data.byteLength > 0) {
+        let text = decoder.decode(result.data);
+        
+        // MẸO QUAN TRỌNG: Loại bỏ toàn bộ ký tự NULL (\0) dư thừa do buffer 64-byte bị trống ở đuôi chuỗi JSON
+        text = text.replace(/\0/g, ''); 
+        
+        handleRawData(text);
       }
-    } catch (err) {
-      console.error(err);
-      setToast('Không thể kết nối thiết bị USB. Đảm bảo bạn đã cấp quyền!');
-      connectButton.disabled = false;
-      connectButton.textContent = 'Connect Device';
     }
-    return;
+  } catch (err) {
+    console.error(err);
+    setToast('Mất kết nối hoặc bạn đã hủy chọn thiết bị. Thử lại nhé!');
+    connectButton.disabled = false;
+    connectButton.textContent = 'Connect Device';
   }
-
-  // Trường hợp trình duyệt quá cũ không hỗ trợ cả hai
-  setToast('Trình duyệt này quá cũ hoặc bị khóa tính năng kết nối phần cứng!');
 });
