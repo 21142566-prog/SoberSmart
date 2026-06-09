@@ -127,43 +127,54 @@ connectButton.addEventListener('click', async () => {
     connectButton.disabled = true;
     connectButton.textContent = 'Đang kết nối...';
 
-    // Quét thiết bị (Nếu muốn mở rộng danh sách quét, có thể dùng { filters: [] })
+    // Quét thiết bị dựa trên VID/PID của STM32 Custom HID
     usbDevice = await navigator.usb.requestDevice({
-      filters: [{ vendorId: 0x0483, productId: 0x5750 }] // Mã VID/PID chuẩn Custom HID của STM32
+      filters: [{ vendorId: 0x0483, productId: 0x5750 }]
     });
 
     await usbDevice.open();
-
     await usbDevice.selectConfiguration(1);
-    // Chiếm quyền sử dụng cổng dữ liệu (Interface số 0 của lớp Custom HID)
+
+    // KIỂM TRA VÀ CHIẾM QUYỀN INTERFACE CHUẨN ĐỐI VỚI DÒNG G0B1
+    // Thử Interface 1 trước (Interface truyền dữ liệu thô của Custom HID)
     try {
+      await usbDevice.claimInterface(1);
+      console.log("Đã chiếm quyền thành công Interface 1");
+    } catch (ifaceErr) {
+      console.log("Interface 1 bận hoặc không tồn tại, thử chiếm quyền Interface 0...");
       await usbDevice.claimInterface(0);
-        } catch (ifaceErr) {
-    // Nếu Interface 0 bị báo bận, tự động chuyển sang Interface 1
-    console.log("Interface 0 bận, thử chiếm quyền Interface 1...");
-    await usbDevice.claimInterface(1);
     }
 
-    setToast('Đã thông luồng dữ liệu Custom HID thành công!');
     connectButton.textContent = 'Đã kết nối';
     setToast('Kết nối thành công tới STM32G0B1 Custom HID!');
 
     const decoder = new TextDecoder();
     
-    // Vòng lặp vô hạn đọc các gói tin 64-byte từ Endpoint 1 (0x81)
-    while (true) {
-      let result = await usbDevice.transferIn(1, 64); 
-      if (result.status === 'ok' && result.data.byteLength > 0) {
-        let text = decoder.decode(result.data);
+    // VÒNG LẶP ĐỌC DỮ LIỆU AN TOÀN (CÓ THỂ TỰ THOÁT NẾU LỖI PHẦN CỨNG)
+    while (usbDevice && usbDevice.opened) {
+      try {
+        // ĐÚNG CHUẨN: Đọc từ Endpoint 0x81 (Endpoint 1 IN của Custom HID)
+        let result = await usbDevice.transferIn(0x81, 64); 
         
-        // MẸO QUAN TRỌNG: Loại bỏ toàn bộ ký tự NULL (\0) dư thừa do buffer 64-byte bị trống ở đuôi chuỗi JSON
-        text = text.replace(/\0/g, ''); 
-        
-        handleRawData(text);
+        if (result.status === 'ok' && result.data && result.data.byteLength > 0) {
+          let text = decoder.decode(result.data);
+          
+          // Loại bỏ toàn bộ ký tự NULL (\0) dư thừa ở đuôi gói tin 64 byte
+          text = text.replace(/\0/g, ''); 
+          
+          handleRawData(text);
+        } else if (result.status === 'stall') {
+          console.warn('Endpoint bị kẹt (Stalled), đang tự động clear...');
+          await usbDevice.clearHalt('in', 0x81);
+        }
+      } catch (readErr) {
+        console.error("Lỗi trong quá trình đọc dữ liệu liên tục:", readErr);
+        break; // Bẻ gãy vòng lặp vô hạn ngay nếu mạch bị rút hoặc mất kết nối phần cứng
       }
     }
+
   } catch (err) {
-    console.error(err);
+    console.error("Lỗi bắt tay kết nối:", err);
     setToast('Mất kết nối hoặc bạn đã hủy chọn thiết bị. Thử lại nhé!');
     connectButton.disabled = false;
     connectButton.textContent = 'Connect Device';
