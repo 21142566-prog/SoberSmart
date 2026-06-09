@@ -4,8 +4,29 @@ const statusTitle = document.getElementById('status-title');
 const bacDisplay = document.querySelector('.title-group h1');
 const connectButton = document.getElementById('connect-button');
 const toast = document.getElementById('toast');
+const liveTimeEl = document.getElementById('live-time');
+const liveDateEl = document.getElementById('live-date');
 
 let lineBuffer = '';
+
+function updateClock() {
+  if (!liveTimeEl || !liveDateEl) return;
+
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  const weekdays = ['CN', 'Th 2', 'Th 3', 'Th 4', 'Th 5', 'Th 6', 'Th 7'];
+
+  liveTimeEl.textContent = `${hours}h:${minutes}p:${seconds}s`;
+  liveDateEl.textContent = `${day}/${month}/${year} · ${weekdays[now.getDay()]}`;
+}
+
+updateClock();
+setInterval(updateClock, 1000);
 
 function setToast(message) {
   toast.textContent = message;
