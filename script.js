@@ -8,11 +8,10 @@ const liveTimeEl = document.getElementById('live-time');
 const liveDateEl = document.getElementById('live-date');
 
 let lineBuffer = '';
-let usbDevice = null; // Biến lưu trữ thiết bị kết nối qua WebUSB
 
-// --- 1. CẬP NHẬT ĐỒNG HỒ REALTIME ---
 function updateClock() {
   if (!liveTimeEl || !liveDateEl) return;
+
   const now = new Date();
   const hours = String(now.getHours()).padStart(2, '0');
   const minutes = String(now.getMinutes()).padStart(2, '0');
@@ -25,6 +24,7 @@ function updateClock() {
   liveTimeEl.textContent = `${hours}h:${minutes}p:${seconds}s`;
   liveDateEl.textContent = `${day}/${month}/${year} · ${weekdays[now.getDay()]}`;
 }
+
 updateClock();
 setInterval(updateClock, 1000);
 
@@ -33,19 +33,25 @@ function setToast(message) {
   toast.classList.remove('hidden');
 }
 
-// Định dạng màu sắc giao diện tương ứng với trạng thái mạch gửi lên
+// 1. CẬP NHẬT ĐẦY ĐỦ 5 TRẠNG THÁI ĐỒNG BỘ VỚI STM32
 function getStatusInfo(status) {
   switch (status) {
-    case 'IDLE': return { label: 'SẴN SÀNG ĐO', color: '#38bdf8' };     // Xanh dương bầu trời
-    case 'MEASURING': return { label: 'ĐANG THỔI KHÍ...', color: '#a855f7' }; // Tím nhấp nháy
-    case 'WAIT_RESET': return { label: 'CHỜ RESET MẠCH', color: '#fbbf24' }; // Vàng cảnh báo
-    case 'LEVEL1': return { label: 'VI PHẠM MỨC 1', color: '#f97316' };  // Cam phạt nhẹ
-    case 'LEVEL2': return { label: 'VI PHẠM NẶNG', color: '#ef4444' };   // Đỏ hú còi
-    default: return { label: 'AN TOÀN (SAFE)', color: '#34d399' };     // Xanh lá
+    case 'IDLE':
+      return { label: 'SẴN SÀNG ĐO', color: '#3b82f6' }; // Màu xanh dương dứt khoát
+    case 'MEASURING':
+      return { label: 'ĐANG THỔI...', color: '#a855f7' }; // Màu tím nhấp nháy chuyển động
+    case 'WAIT_RESET':
+      return { label: 'CHỜ RESET CHU TRÌNH', color: '#64748b' }; // Màu xám chờ lệnh
+    case 'LEVEL1':
+      return { label: 'CẢNH BÁO: LEVEL 1', color: '#f59e0b' }; // Cam
+    case 'LEVEL2':
+      return { label: 'NGUY HIỂM: LEVEL 2', color: '#ef4444' }; // Đỏ hú còi
+    case 'SAFE':
+    default:
+      return { label: 'AN TOÀN (SAFE)', color: '#10b981' }; // Xanh lá
   }
 }
 
-// --- 2. XỬ LÝ CHUỖI JSON NHẬN ĐƯỢC ---
 function processLine(line) {
   line = line.trim();
   if (!line) return;
@@ -57,69 +63,66 @@ function processLine(line) {
   try {
     const data = JSON.parse(line.substring(start, end + 1));
 
-    // Trạng thái chờ rảnh (IDLE) -> Đưa màn hình về 0
+    // 2. KHÔNG CÒN ÉP XOÁ MÀN HÌNH Ở TRẠNG THÁI 'WAIT_RESET' NỮA (ĐỂ GIỮ LẠI ĐỈNH KẾT QUẢ ĐO)
     if (data.status === 'IDLE') {
-      bacDisplay.textContent = '0.00%';
-      adcValueEl.textContent = '0.0000';
-      const idleInfo = getStatusInfo('IDLE');
+      bacDisplay.textContent = '0.000%';
+      adcValueEl.textContent = '--';
+
+      const idleInfo = getStatusInfo(data.status);
       statusTitle.textContent = idleInfo.label;
       statusTitle.style.color = idleInfo.color;
-      statusValueEl.textContent = 'SAFE';
-      statusValueEl.style.color = '#34d399';
-      setToast(`Hệ thống rảnh. Điện áp nền: ${(data.mv ?? 0).toFixed(1)} mV`);
+      statusValueEl.textContent = idleInfo.label;
+      statusValueEl.style.color = idleInfo.color;
+
+      setToast('Sẵn sàng đo. Hãy ngậm ống thổi và NHẤN NÚT trên mạch để bắt đầu...');
       return;
     }
 
-    // Trạng thái chốt kết quả chờ nhấn nút cứng (WAIT_RESET)
+    // Nếu mạch báo trạng thái Chờ nhấn nút để đặt lại chu trình mới
     if (data.status === 'WAIT_RESET') {
-      const waitInfo = getStatusInfo('WAIT_RESET');
+      const waitInfo = getStatusInfo(data.status);
       statusTitle.textContent = waitInfo.label;
       statusTitle.style.color = waitInfo.color;
-      setToast('Đã chốt đỉnh cồn! Hãy nhấn nút cứng trên thiết bị để đo lượt mới.');
-      return; 
+      statusValueEl.textContent = waitInfo.label;
+      statusValueEl.style.color = waitInfo.color;
+      
+      setToast('Chu kỳ đo kết thúc. Vui lòng NHẤN NÚT CỨNG một lần nữa để làm sạch cảm biến...');
+      return;
     }
 
-    // Cập nhật giá trị khí thở mg/L tức thời
-    const mgL = data.mgL ?? 0;
-    adcValueEl.textContent = Number(mgL).toFixed(4);
+    // 3. CẬP NHẬT GIÁ TRỊ LỌC ADC THỰC TẾ (TỪ FIRMWARE)
+    if (data.adc !== undefined) {
+      adcValueEl.textContent = data.adc;
+    }
 
-    // Cập nhật nhãn trạng thái (SAFE / LEVEL1 / LEVEL2 / MEASURING)
+    // Cập nhật trạng thái hiển thị thông tin màu sắc (MEASURING, SAFE, LEVEL1, LEVEL2)
     const info = getStatusInfo(data.status ?? 'SAFE');
+    statusValueEl.textContent = info.label;
+    statusValueEl.style.color = info.color;
     statusTitle.textContent = info.label;
     statusTitle.style.color = info.color;
-    statusValueEl.textContent = data.status;
-    statusValueEl.style.color = info.color;
 
-    // Cập nhật phần trăm nồng độ cồn máu (% BAC)
-    const pct = (data.pct ?? 0).toFixed(3);
-    bacDisplay.textContent = pct + '%';
+    // 4. CẬP NHẬT NỒNG ĐỘ CỒN CHUẨN % BAC (BA CHỮ SỐ THẬP PHÂN)
+    if (data.pct !== undefined) {
+      const pct = data.pct.toFixed(3);
+      bacDisplay.textContent = pct + '%';
+    }
 
-    setToast(`Khí thở: ${Number(mgL).toFixed(4)} mg/L | Điện áp: ${(data.mv ?? 0).toFixed(1)} mV`);
+    // Cập nhật thanh Toast hiển thị chi tiết thông số thời gian thực dưới chân trang
+    const mgLVal = data.mgL !== undefined ? data.mgL.toFixed(4) : '0.0000';
+    const mvVal = data.mv !== undefined ? data.mv.toFixed(1) : '0.0';
+    setToast(
+      `Độ cồn: ${mgLVal} mg/L | Điện áp: ${mvVal} mV | Trạng thái: ${info.label}`
+    );
+
   } catch (e) {
-    console.warn('Lỗi phân tích cú pháp JSON:', line);
+    console.warn('Parse lỗi:', line);
   }
 }
 
-// Bộ đệm xử lý tách dòng dữ liệu thô liên tục
-function handleRawData(textChunk) {
-  lineBuffer += textChunk;
-  const lines = lineBuffer.split('\n');
-  lineBuffer = lines.pop(); 
-
-  for (const line of lines) {
-    processLine(line);
-  }
-
-  if (lineBuffer.includes('{') && lineBuffer.includes('}')) {
-    processLine(lineBuffer);
-    lineBuffer = '';
-  }
-}
-
-// --- 3. KẾT NỐI QUA WEBUSB (HỖ TRỢ CẢ PC VÀ ĐIỆN THOẠI) ---
 connectButton.addEventListener('click', async () => {
-  if (!('usb' in navigator)) {
-    setToast('Trình duyệt không hỗ trợ WebUSB API. Hãy dùng Chrome trên PC/Android!');
+  if (!('serial' in navigator)) {
+    setToast('Web Serial API không hỗ trợ. Dùng Chrome hoặc Edge nhé!');
     return;
   }
 
@@ -127,55 +130,41 @@ connectButton.addEventListener('click', async () => {
     connectButton.disabled = true;
     connectButton.textContent = 'Đang kết nối...';
 
-    // Quét thiết bị dựa trên VID/PID của STM32 Custom HID
-    usbDevice = await navigator.usb.requestDevice({
-      filters: [{ vendorId: 0x0483, productId: 0x5750 }]
-    });
+    const port = await navigator.serial.requestPort();
+    // Khớp tốc độ Baudrate 115200 cấu hình trong chip STM32 UART
+    await port.open({ baudRate: 115200 });
 
-    await usbDevice.open();
-    await usbDevice.selectConfiguration(1);
-
-    // KIỂM TRA VÀ CHIẾM QUYỀN INTERFACE CHUẨN ĐỐI VỚI DÒNG G0B1
-    // Thử Interface 1 trước (Interface truyền dữ liệu thô của Custom HID)
-    try {
-      await usbDevice.claimInterface(0); 
-      console.log("Đã chiếm quyền thành công Interface 0");
-    } catch (ifaceErr) {
-      console.error("Không thể chiếm quyền Interface 0:", ifaceErr);
-      throw ifaceErr;
-    }
+    const decoder = new TextDecoderStream();
+    port.readable.pipeTo(decoder.writable);
+    const reader = decoder.readable.getReader();
 
     connectButton.textContent = 'Đã kết nối';
-    setToast('Kết nối thành công tới STM32G0B1 Custom HID!');
+    setToast('Kết nối cổng COM thành công! Đang nhận chuỗi dữ liệu JSON...');
 
-    const decoder = new TextDecoder();
-    
-    // VÒNG LẶP ĐỌC DỮ LIỆU AN TOÀN (CÓ THỂ TỰ THOÁT NẾU LỖI PHẦN CỨNG)
-    while (usbDevice && usbDevice.opened) {
-      try {
-        // ĐÚNG CHUẨN: Đọc từ Endpoint 0x81 (Endpoint 1 IN của Custom HID)
-        let result = await usbDevice.transferIn(0x81, 64); 
-        
-        if (result.status === 'ok' && result.data && result.data.byteLength > 0) {
-          let text = decoder.decode(result.data);
-          
-          // Loại bỏ toàn bộ ký tự NULL (\0) dư thừa ở đuôi gói tin 64 byte
-          text = text.replace(/\0/g, ''); 
-          
-          handleRawData(text);
-        } else if (result.status === 'stall') {
-          console.warn('Endpoint bị kẹt (Stalled), đang tự động clear...');
-          await usbDevice.clearHalt('in', 0x81);
-        }
-      } catch (readErr) {
-        console.error("Lỗi trong quá trình đọc dữ liệu liên tục:", readErr);
-        break; // Bẻ gãy vòng lặp vô hạn ngay nếu mạch bị rút hoặc mất kết nối phần cứng
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      lineBuffer += value;
+
+      const lines = lineBuffer.split('\n');
+      lineBuffer = lines.pop(); 
+
+      for (const line of lines) {
+        processLine(line);
+      }
+
+      if (lineBuffer.includes('{') && lineBuffer.includes('}')) {
+        processLine(lineBuffer);
+        lineBuffer = '';
       }
     }
 
   } catch (err) {
-    console.error("Lỗi bắt tay kết nối:", err);
-    setToast('Mất kết nối hoặc bạn đã hủy chọn thiết bị. Thử lại nhé!');
+    console.error(err);
+    setToast('Mất kết nối cổng COM phần cứng. Vui lòng cắm lại cáp Type-C!');
+  } finally {
     connectButton.disabled = false;
     connectButton.textContent = 'Connect Device';
   }
